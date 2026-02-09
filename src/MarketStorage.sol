@@ -9,6 +9,7 @@ abstract contract MarketStorage is ERC721 {
 
     IMarket.Option[] public options;
 
+    mapping(uint256 optionId => uint256 storedIdx) public optionIdx;
     mapping(address seller => IMarket.Option[]) public optionsWritten;
     mapping(address buyer => IMarket.Option[]) public optionsBought;
 }

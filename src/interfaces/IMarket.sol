@@ -3,9 +3,10 @@ pragma solidity 0.8.30;
 
 interface IMarket {
     struct MarketConfig {
-        bytes32 id;
         string marketName;
         string marketSymbol;
+        uint256 yOutcomeId;
+        uint256 nOutcomeId;
         uint32 marketExpiry;
         uint16 upperStrikeBound;
         uint16 lowerStrikeBound;
@@ -21,7 +22,7 @@ interface IMarket {
         address seller;
         address buyer;
         uint32 expiry;
+        bool isPendingFill;
         bool isExpired;
-        bytes sellerSignature;
     }
 }
