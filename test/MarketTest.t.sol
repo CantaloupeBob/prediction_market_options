@@ -20,8 +20,8 @@ contract MarketTest is Test {
     address constant NEG_RISK_ADAPTER = 0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296;
 
     // Will Jesus Christ return before 2027? Polymarket Info
-    string constant SLUG = "slug=will-jesus-christ-return-before-2027";
-    string constant SYMBOL = "slug=will-jesus-christ-return-before-2027";
+    string constant SLUG = "will-jesus-christ-return-before-2027";
+    string constant SYMBOL = "will-jesus-christ-return-before-2027";
     bytes32 constant CONDITION_ID = 0x0b4cc3b739e1dfe5d73274740e7308b6fb389c5af040c3a174923d928d134bee;
     uint256 constant Y_OUTCOME = 69324317355037271422943965141382095011871956039434394956830818206664869608517;
     uint256 constant N_OUTCOME = 51797157743046504218541616681751597845468055908324407922581755135522797852101;
@@ -78,6 +78,82 @@ contract MarketTest is Test {
 
     function test_writeOption() external {
         Market market = _createDefaultOptionMarket();
+        _createDefaultOption(market);
+
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+
+        assertEq(market.optionsCount(), 1);
+        IMarket.Option memory option = market.getOption(1);
+        assertEq(option.id, 1);
+        assertEq(option.size, 5000);
+        assertEq(option.optionTokenId, Y_OUTCOME);
+        assertEq(option.strike, 50);
+        assertEq(option.premium, 10e6);
+        assertEq(option.premiumToken, address(USDC));
+        assertEq(option.seller, seller.addr);
+        assertEq(option.buyer, address(0));
+        assertEq(option.isPendingFill, true);
+        assertEq(option.isExpired, false);
+
+        IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
+        assertEq(sellerOptions.length, 1);
+        assertEq(sellerOptions[0].id, 1);
+        assertEq(sellerOptions[0].size, 5000);
+        assertEq(sellerOptions[0].seller, seller.addr);
+
+        assertEq(market.optionIdx(1), 0);
+    }
+
+    function test_buyOption() external {
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+        IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
+
+        deal(address(USDC), buyer.addr, optionBefore.premium);
+        vm.prank(buyer.addr);
+        USDC.approve(address(market), optionBefore.premium);
+
+        bytes memory signature = _signOptionData(buyer, market, optionBefore);
+
+        assertEq(optionBefore.buyer, address(0));
+        assertEq(optionBefore.isPendingFill, true);
+        assertEq(USDC.balanceOf(buyer.addr), optionBefore.premium);
+        assertEq(USDC.balanceOf(optionBefore.seller), 0);
+        assertEq(buyerOptionsBefore.length, 0);
+        vm.expectRevert("TokenDoesNotExist()");
+        market.ownerOf(optionBefore.id);
+
+        vm.prank(executor.addr);
+        IMarket.Option memory optionAfter = market.getOption(market.buyOption(optionBefore.id, buyer.addr, signature));
+
+        assertEq(optionAfter.buyer, buyer.addr);
+        assertEq(optionAfter.isPendingFill, false);
+        assertEq(USDC.balanceOf(buyer.addr), 0);
+        assertEq(USDC.balanceOf(optionBefore.seller), optionAfter.premium);
+        assertEq(market.ownerOf(optionBefore.id), optionAfter.buyer);
+
+        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        assertEq(buyerOptionsAfter.length, 1);
+    }
+
+    function _createDefaultOptionMarket() private returns (Market market_) {
+        IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
+            marketName: SLUG,
+            marketSymbol: SLUG,
+            yOutcomeId: Y_OUTCOME,
+            nOutcomeId: N_OUTCOME,
+            marketExpiry: END_DATE_TIMESTAMP,
+            upperStrikeBound: 99,
+            lowerStrikeBound: 1
+        });
+        vm.expectEmit();
+        emit MarketFactory.CreateMarket(marketConfig);
+        vm.prank(admin.addr);
+        market_ = Market(factory.createMarket(marketConfig));
+    }
+
+    function _createDefaultOption(Market market) private returns (uint256) {
         (,,,, uint32 marketExpiry,,) = market.marketConfig();
         uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
         IMarket.Option memory optionParams = IMarket.Option({
@@ -103,49 +179,8 @@ contract MarketTest is Test {
         assertEq(market.optionsCount(), 0);
 
         vm.prank(executor.addr);
-        market.writeOption(optionParams, sellerSignature);
-
-        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
-        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
-
-        assertEq(market.optionsCount(), 1);
-
-        IMarket.Option memory option = market.getOption(1);
-        assertEq(option.id, 1);
-        assertEq(option.size, 5000);
-        assertEq(option.optionTokenId, Y_OUTCOME);
-        assertEq(option.strike, 50);
-        assertEq(option.premium, 10e6);
-        assertEq(option.premiumToken, address(USDC));
-        assertEq(option.seller, seller.addr);
-        assertEq(option.buyer, address(0));
-        assertEq(option.expiry, optionExpiry);
-        assertEq(option.isPendingFill, true);
-        assertEq(option.isExpired, false);
-
-        IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
-        assertEq(sellerOptions.length, 1);
-        assertEq(sellerOptions[0].id, 1);
-        assertEq(sellerOptions[0].size, 5000);
-        assertEq(sellerOptions[0].seller, seller.addr);
-
-        assertEq(market.optionIdx(1), 0);
-    }
-
-    function _createDefaultOptionMarket() private returns (Market market_) {
-        IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
-            marketName: SLUG,
-            marketSymbol: SLUG,
-            yOutcomeId: Y_OUTCOME,
-            nOutcomeId: N_OUTCOME,
-            marketExpiry: END_DATE_TIMESTAMP,
-            upperStrikeBound: 99,
-            lowerStrikeBound: 1
-        });
-        vm.expectEmit();
-        emit MarketFactory.CreateMarket(marketConfig);
-        vm.prank(admin.addr);
-        market_ = Market(factory.createMarket(marketConfig));
+        uint256 optionId = market.writeOption(optionParams, sellerSignature);
+        return optionId;
     }
 
     function _approveShares(Vm.Wallet memory owner, address operator, bool approved) private {
@@ -157,11 +192,14 @@ contract MarketTest is Test {
         uint256[] memory partition = new uint256[](2);
         partition[0] = 1;
         partition[1] = 2;
+
         deal(address(USDC), recipient.addr, amount);
+
         vm.startPrank(recipient.addr);
         USDC.approve(address(CONDITIONAL_TOKENS), type(uint256).max);
         CONDITIONAL_TOKENS.splitPosition(address(USDC), hex"", conditionId, partition, amount);
         vm.stopPrank();
+
         assertEq(CONDITIONAL_TOKENS.balanceOf(recipient.addr, Y_OUTCOME), amount);
         assertEq(CONDITIONAL_TOKENS.balanceOf(recipient.addr, N_OUTCOME), amount);
     }

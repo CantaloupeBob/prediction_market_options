@@ -23,6 +23,6 @@ interface IMarket {
         address buyer;
         uint32 expiry;
         bool isPendingFill;
-        bool isExpired;
+        bool isExpired; // TODO - We might want to change this to an isSettled field
     }
 }

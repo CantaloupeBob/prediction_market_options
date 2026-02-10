@@ -20,9 +20,12 @@ contract Market is IMarket, MarketStorage, EIP712 {
     error Market__InvalidTokenId();
     error Market__InvalidOptionId();
     error Market__InvalidSignature();
+    error Market__Unavailable();
+    error Market__Expired();
     error Market__ZA();
 
     event OptionWritten(MarketConfig indexed marketConfig, Option indexed option);
+    event OptionBought(MarketConfig indexed marketConfig, Option indexed option);
 
     bytes32 public constant OPTION_TYPEHASH = keccak256(
         "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry)"
@@ -36,8 +39,8 @@ contract Market is IMarket, MarketStorage, EIP712 {
         marketConfig = config;
     }
 
-    function writeOption(Option memory params, bytes memory signature) external {
-        _verifyWriteSig(OPTION_TYPEHASH, params, signature);
+    function writeOption(Option memory params, bytes memory signature) external returns (uint256) {
+        _verifySignature(params, params.seller, signature);
         _validateOptionParams(params);
 
         params.id = ++optionsCount;
@@ -49,11 +52,25 @@ contract Market is IMarket, MarketStorage, EIP712 {
         ERC1155(CTF_CONTRACT).safeTransferFrom(params.seller, address(this), params.optionTokenId, params.size, hex"");
 
         emit OptionWritten(marketConfig, params);
+        return params.id;
     }
 
-    function buyOption(uint256 id) external {
-        // _mint(params.buyer, _optionId);
-        // _verifyWriteSig(OPTION_TYPEHASH,);
+    function buyOption(uint256 optionId, address buyer, bytes memory signature) external returns (uint256) {
+        Option storage option = options[optionIdx[optionId]];
+        _verifySignature(option, buyer, signature);
+
+        require(option.isPendingFill, Market__Unavailable());
+        require(option.expiry <= marketConfig.marketExpiry, Market__Expired());
+
+        option.buyer = buyer;
+        option.isPendingFill = false;
+        optionsBought[buyer].push(option);
+
+        option.premiumToken.safeTransferFrom(buyer, option.seller, option.premium);
+        _mint(option.buyer, option.id);
+
+        emit OptionBought(marketConfig, option);
+        return option.id;
     }
 
     function settleOption(uint256 id) external {}
@@ -77,7 +94,7 @@ contract Market is IMarket, MarketStorage, EIP712 {
         require(params.buyer == address(0), Market__ZA());
     }
 
-    function getOption(uint256 id) external view returns (Option memory) {
+    function getOption(uint256 id) public view returns (Option memory) {
         return options[optionIdx[id]];
     }
 
@@ -85,27 +102,24 @@ contract Market is IMarket, MarketStorage, EIP712 {
         return isSeller ? optionsWritten[holder] : optionsBought[holder];
     }
 
-    function _verifyWriteSig(bytes32 typehash, Option memory params, bytes memory signature) private view {
-        bytes32 structHash;
-        if (typehash == OPTION_TYPEHASH) {
-            structHash = keccak256(
-                abi.encode(
-                    OPTION_TYPEHASH,
-                    params.id,
-                    params.size,
-                    params.optionTokenId,
-                    params.strike,
-                    params.premium,
-                    params.premiumToken,
-                    params.seller,
-                    params.buyer,
-                    params.expiry
-                )
-            );
-        }
+    function _verifySignature(Option memory params, address signer, bytes memory signature) private view {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                OPTION_TYPEHASH,
+                params.id,
+                params.size,
+                params.optionTokenId,
+                params.strike,
+                params.premium,
+                params.premiumToken,
+                params.seller,
+                params.buyer,
+                params.expiry
+            )
+        );
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", _domainSeparator(), structHash));
         address _recovered = ECDSA.tryRecover(digest, signature);
-        require(_recovered == params.seller, Market__InvalidSignature());
+        require(_recovered == signer, Market__InvalidSignature());
     }
 
     function getDomainSeparator() public view returns (bytes32) {
