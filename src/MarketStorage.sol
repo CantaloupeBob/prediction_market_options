@@ -2,14 +2,17 @@
 pragma solidity 0.8.30;
 
 import {ERC721} from "@solady/tokens/ERC721.sol";
+import {EnumerableSetLib} from "@solady/utils/EnumerableSetLib.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
 
 abstract contract MarketStorage is ERC721 {
+    using EnumerableSetLib for EnumerableSetLib.Uint256Set;
+
     uint256 public optionsCount;
 
-    IMarket.Option[] public options;
+    mapping(uint256 => IMarket.Option) public options;
 
-    mapping(uint256 optionId => uint256 storedIdx) public optionIdx;
-    mapping(address seller => IMarket.Option[]) public optionsWritten;
-    mapping(address buyer => IMarket.Option[]) public optionsBought;
+    EnumerableSetLib.Uint256Set internal _allOptionIds;
+    mapping(address => EnumerableSetLib.Uint256Set) internal _optionsWritten;
+    mapping(address => EnumerableSetLib.Uint256Set) internal _optionsBought;
 }

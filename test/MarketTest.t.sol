@@ -94,18 +94,16 @@ contract MarketTest is Test {
         assertEq(option.seller, seller.addr);
         assertEq(option.buyer, address(0));
         assertEq(option.isPendingFill, true);
-        assertEq(option.isExpired, false);
+        assertEq(option.isSettled, false);
 
         IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
         assertEq(sellerOptions.length, 1);
         assertEq(sellerOptions[0].id, 1);
         assertEq(sellerOptions[0].size, 5000);
         assertEq(sellerOptions[0].seller, seller.addr);
-
-        assertEq(market.optionIdx(1), 0);
     }
 
-    function test_buyOption() external {
+    function test_buyOption() external {         
         Market market = _createDefaultOptionMarket();
         IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
         IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
@@ -135,6 +133,39 @@ contract MarketTest is Test {
 
         IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 1);
+    }
+
+    function test_cancelOption() external {
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+
+        bytes memory signature = _signOptionData(seller, market, optionBefore);
+
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+        assertEq(optionBefore.isPendingFill, true);
+        assertEq(market.optionsCount(), 1);
+
+        IMarket.Option[] memory sellerOptionsBefore = market.getOptions(seller.addr, true);
+        assertEq(sellerOptionsBefore.length, 1);
+
+        vm.prank(executor.addr);
+        market.cancelOption(optionBefore.id, signature);
+
+        IMarket.Option memory optionAfter = market.getOption(optionBefore.id);
+        assertEq(optionAfter.id, 0);
+        assertEq(optionAfter.size, 0);
+        assertEq(optionAfter.seller, address(0));
+        assertEq(optionAfter.buyer, address(0));
+        assertEq(optionAfter.isPendingFill, false);
+
+        IMarket.Option[] memory sellerOptionsAfter = market.getOptions(seller.addr, true);
+        assertEq(sellerOptionsAfter.length, 0);
+        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        assertEq(buyerOptionsAfter.length, 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        assertEq(market.optionsCount(), 1);
     }
 
     function _createDefaultOptionMarket() private returns (Market market_) {
@@ -167,7 +198,7 @@ contract MarketTest is Test {
             buyer: address(0),
             expiry: optionExpiry,
             isPendingFill: false,
-            isExpired: false
+            isSettled: false
         });
         bytes memory sellerSignature = _signOptionData(seller, market, optionParams);
 

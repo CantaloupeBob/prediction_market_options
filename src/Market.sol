@@ -7,11 +7,13 @@ import {ECDSA} from "@solady/utils/ECDSA.sol";
 import {EIP712} from "@solady/utils/EIP712.sol";
 import {SignatureCheckerLib} from "@solady/utils/SignatureCheckerLib.sol";
 import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
+import {EnumerableSetLib} from "@solady/utils/EnumerableSetLib.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
 import {console} from "forge-std/console.sol";
 
 contract Market is IMarket, MarketStorage, EIP712 {
     using SafeTransferLib for address;
+    using EnumerableSetLib for EnumerableSetLib.Uint256Set;
 
     error Market__InvalidSize();
     error Market__InvalidPremium();
@@ -26,6 +28,8 @@ contract Market is IMarket, MarketStorage, EIP712 {
 
     event OptionWritten(MarketConfig indexed marketConfig, Option indexed option);
     event OptionBought(MarketConfig indexed marketConfig, Option indexed option);
+    event OptionCanceled(MarketConfig indexed marketConfig, Option indexed option);
+    event OptionSettled(MarketConfig indexed marketConfig, Option indexed option);
 
     bytes32 public constant OPTION_TYPEHASH = keccak256(
         "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry)"
@@ -45,9 +49,10 @@ contract Market is IMarket, MarketStorage, EIP712 {
 
         params.id = ++optionsCount;
         params.isPendingFill = true;
-        optionsWritten[params.seller].push(params);
-        options.push(params);
-        optionIdx[params.id] = options.length - 1;
+        
+        options[params.id] = params;
+        _allOptionIds.add(params.id);
+        _optionsWritten[params.seller].add(params.id);
 
         ERC1155(CTF_CONTRACT).safeTransferFrom(params.seller, address(this), params.optionTokenId, params.size, hex"");
 
@@ -56,7 +61,7 @@ contract Market is IMarket, MarketStorage, EIP712 {
     }
 
     function buyOption(uint256 optionId, address buyer, bytes memory signature) external returns (uint256) {
-        Option storage option = options[optionIdx[optionId]];
+        Option storage option = options[optionId];
         _verifySignature(option, buyer, signature);
 
         require(option.isPendingFill, Market__Unavailable());
@@ -64,7 +69,7 @@ contract Market is IMarket, MarketStorage, EIP712 {
 
         option.buyer = buyer;
         option.isPendingFill = false;
-        optionsBought[buyer].push(option);
+        _optionsBought[buyer].add(option.id);
 
         option.premiumToken.safeTransferFrom(buyer, option.seller, option.premium);
         _mint(option.buyer, option.id);
@@ -75,7 +80,18 @@ contract Market is IMarket, MarketStorage, EIP712 {
 
     function settleOption(uint256 id) external {}
 
-    function cancelOption(uint256 id) external {}
+    function cancelOption(uint256 optionId, bytes memory signature) external {
+        Option storage option = options[optionId];
+        _verifySignature(option, option.seller, signature);
+
+        ERC1155(CTF_CONTRACT).safeTransferFrom(address(this), option.seller, option.optionTokenId, option.size, hex"");
+
+        emit OptionCanceled(marketConfig, option);
+
+        _allOptionIds.remove(optionId);
+        _optionsWritten[option.seller].remove(optionId);
+        delete options[optionId];
+    }
 
     function _validateOptionParams(Option memory params) private view {
         require(
@@ -95,11 +111,16 @@ contract Market is IMarket, MarketStorage, EIP712 {
     }
 
     function getOption(uint256 id) public view returns (Option memory) {
-        return options[optionIdx[id]];
+        return options[id];
     }
 
     function getOptions(address holder, bool isSeller) external view returns (Option[] memory) {
-        return isSeller ? optionsWritten[holder] : optionsBought[holder];
+        uint256[] memory ids = isSeller ? _optionsWritten[holder].values() : _optionsBought[holder].values();
+        Option[] memory m_options = new Option[](ids.length);
+        for (uint256 i; i < ids.length; i++) {
+            m_options[i] = options[ids[i]];
+        }
+        return m_options;
     }
 
     function _verifySignature(Option memory params, address signer, bytes memory signature) private view {
