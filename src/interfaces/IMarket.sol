@@ -7,6 +7,7 @@ interface IMarket {
         string marketSymbol;
         uint256 yOutcomeId;
         uint256 nOutcomeId;
+        address settler;
         uint32 marketExpiry;
         uint16 upperStrikeBound;
         uint16 lowerStrikeBound;
@@ -22,6 +23,7 @@ interface IMarket {
         address seller;
         address buyer;
         uint32 expiry;
+        bool isCall;
         bool isPendingFill;
         bool isSettled;
     }

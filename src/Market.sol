@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.30;
 
-import {MarketStorage} from "src/MarketStorage.sol";
 import {ERC1155} from "@solady/tokens/ERC1155.sol";
+import {ERC721} from "@solady/tokens/ERC721.sol";
 import {ECDSA} from "@solady/utils/ECDSA.sol";
 import {EIP712} from "@solady/utils/EIP712.sol";
 import {SignatureCheckerLib} from "@solady/utils/SignatureCheckerLib.sol";
 import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
 import {EnumerableSetLib} from "@solady/utils/EnumerableSetLib.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
-import {console} from "forge-std/console.sol";
 
-contract Market is IMarket, MarketStorage, EIP712 {
+contract Market is IMarket, ERC721, EIP712 {
     using SafeTransferLib for address;
     using EnumerableSetLib for EnumerableSetLib.Uint256Set;
 
@@ -25,19 +24,28 @@ contract Market is IMarket, MarketStorage, EIP712 {
     error Market__Unavailable();
     error Market__Expired();
     error Market__ZA();
+    error Market__PendingFill();
+    error Market__AlreadySettled();
+    error Market__InvalidPrice();
+    error Market__Unauthorized();
 
     event OptionWritten(MarketConfig indexed marketConfig, Option indexed option);
     event OptionBought(MarketConfig indexed marketConfig, Option indexed option);
+    event OptionExercise(MarketConfig indexed marketConfig, Option indexed option);
     event OptionCanceled(MarketConfig indexed marketConfig, Option indexed option);
-    event OptionSettled(MarketConfig indexed marketConfig, Option indexed option);
 
     bytes32 public constant OPTION_TYPEHASH = keccak256(
-        "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry)"
+        "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry,bool isCall)"
     );
-
     address constant CTF_CONTRACT = 0x4D97DCd97eC945f40cF65F87097ACe5EA0476045;
 
     MarketConfig public marketConfig;
+    uint256 public optionsCount;
+    EnumerableSetLib.Uint256Set _allOptionIds;
+
+    mapping(uint256 => IMarket.Option) public options;
+    mapping(address => EnumerableSetLib.Uint256Set) _optionsWritten;
+    mapping(address => EnumerableSetLib.Uint256Set) _optionsBought;
 
     constructor(MarketConfig memory config) {
         marketConfig = config;
@@ -49,7 +57,7 @@ contract Market is IMarket, MarketStorage, EIP712 {
 
         params.id = ++optionsCount;
         params.isPendingFill = true;
-        
+
         options[params.id] = params;
         _allOptionIds.add(params.id);
         _optionsWritten[params.seller].add(params.id);
@@ -78,7 +86,23 @@ contract Market is IMarket, MarketStorage, EIP712 {
         return option.id;
     }
 
-    function settleOption(uint256 id) external {}
+    function exercise(uint256 optionId, uint16 p) external isAuthorized(msg.sender) returns (uint256) {
+        Option storage option = options[optionId];
+
+        require(p >= 0 && p <= 100, Market__InvalidPrice());
+        require(!option.isPendingFill, Market__PendingFill());
+        require(!option.isSettled, Market__AlreadySettled());
+
+        option.isSettled = true;
+
+        bool callsWin = p >= option.strike;
+        address payee = callsWin && option.isCall || !callsWin && !option.isCall ? option.buyer : option.seller;
+
+        ERC1155(CTF_CONTRACT).safeTransferFrom(address(this), payee, option.optionTokenId, option.size, hex"");
+
+        emit OptionExercise(marketConfig, option);
+        return option.id;
+    }
 
     function cancelOption(uint256 optionId, bytes memory signature) external {
         Option storage option = options[optionId];
@@ -135,7 +159,8 @@ contract Market is IMarket, MarketStorage, EIP712 {
                 params.premiumToken,
                 params.seller,
                 params.buyer,
-                params.expiry
+                params.expiry,
+                params.isCall
             )
         );
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", _domainSeparator(), structHash));
@@ -167,7 +192,7 @@ contract Market is IMarket, MarketStorage, EIP712 {
     }
 
     function tokenURI(uint256) public view virtual override returns (string memory) {
-        return ""; // TODO - Do we care abt this?
+        return "";
     }
 
     function onERC1155Received(address, address, uint256, uint256, bytes memory) public pure returns (bytes4) {
@@ -180,5 +205,10 @@ contract Market is IMarket, MarketStorage, EIP712 {
         returns (bytes4)
     {
         return this.onERC1155BatchReceived.selector;
+    }
+
+    modifier isAuthorized(address settler) {
+        require(marketConfig.settler == settler, Market__Unauthorized());
+        _;
     }
 }

@@ -51,6 +51,7 @@ contract MarketTest is Test {
             marketSymbol: SLUG,
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
+            settler: executor.addr,
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -61,13 +62,14 @@ contract MarketTest is Test {
         vm.prank(admin.addr);
         Market market = Market(factory.createMarket(marketConfig));
 
-        (string memory mn, string memory ms, uint256 yId, uint256 nId, uint32 me, uint16 usb, uint16 lsb) =
+        (string memory mn, string memory ms, uint256 yId, uint256 nId, address set, uint32 me, uint16 usb, uint16 lsb) =
             market.marketConfig();
 
         assertEq(mn, marketConfig.marketName);
         assertEq(ms, marketConfig.marketSymbol);
         assertEq(yId, marketConfig.yOutcomeId);
         assertEq(nId, marketConfig.nOutcomeId);
+        assertEq(set, executor.addr);
         assertEq(me, marketConfig.marketExpiry);
         assertEq(usb, marketConfig.upperStrikeBound);
         assertEq(lsb, marketConfig.lowerStrikeBound);
@@ -103,7 +105,7 @@ contract MarketTest is Test {
         assertEq(sellerOptions[0].seller, seller.addr);
     }
 
-    function test_buyOption() external {         
+    function test_buyOption() external {
         Market market = _createDefaultOptionMarket();
         IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
         IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
@@ -133,6 +135,105 @@ contract MarketTest is Test {
 
         IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 1);
+    }
+
+    function testFuzz_exerciseOption(uint16 p) external {
+        p = uint16(bound(p, 0, 100));
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+        deal(address(USDC), buyer.addr, optionBefore.premium);
+        vm.prank(buyer.addr);
+        USDC.approve(address(market), optionBefore.premium);
+
+        bytes memory signature = _signOptionData(buyer, market, optionBefore);
+
+        vm.prank(executor.addr);
+        IMarket.Option memory optionAfter = market.getOption(market.buyOption(optionBefore.id, buyer.addr, signature));
+
+        assertEq(optionAfter.isSettled, false);
+        assertEq(optionAfter.isPendingFill, false);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+
+        bool callsWin = p >= optionAfter.strike;
+        address expectedPayee = callsWin ? buyer.addr : seller.addr;
+
+        vm.prank(executor.addr);
+        market.exercise(optionBefore.id, p);
+
+        IMarket.Option memory optionAfterExercise = market.getOption(optionBefore.id);
+        assertEq(optionAfterExercise.isSettled, true);
+        assertEq(optionAfterExercise.isPendingFill, false);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        if (expectedPayee == buyer.addr) {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 5000);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        } else {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 0);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        }
+    }
+
+    function testFuzz_exerciseOption_PutOption(uint16 p) external {
+        p = uint16(bound(p, 0, 100));
+        Market market = _createDefaultOptionMarket();
+        (,,,,, uint32 marketExpiry,,) = market.marketConfig();
+        uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
+        IMarket.Option memory putOptionParams = IMarket.Option({
+            id: 0,
+            size: 5000,
+            optionTokenId: Y_OUTCOME,
+            strike: 50,
+            premium: 10e6,
+            premiumToken: address(USDC),
+            seller: seller.addr,
+            buyer: address(0),
+            expiry: optionExpiry,
+            isCall: false,
+            isPendingFill: false,
+            isSettled: false
+        });
+        bytes memory sellerSignature = _signOptionData(seller, market, putOptionParams);
+
+        _createShares({recipient: seller, conditionId: CONDITION_ID, amount: 5000});
+        _approveShares({owner: seller, operator: address(market), approved: true});
+
+        vm.prank(executor.addr);
+        uint256 optionId = market.writeOption(putOptionParams, sellerSignature);
+
+        IMarket.Option memory optionBefore = market.getOption(optionId);
+        deal(address(USDC), buyer.addr, optionBefore.premium);
+        vm.prank(buyer.addr);
+        USDC.approve(address(market), optionBefore.premium);
+
+        bytes memory buyerSignature = _signOptionData(buyer, market, optionBefore);
+
+        vm.prank(executor.addr);
+        IMarket.Option memory optionAfter = market.getOption(market.buyOption(optionId, buyer.addr, buyerSignature));
+
+        assertEq(optionAfter.isSettled, false);
+        assertEq(optionAfter.isPendingFill, false);
+        assertEq(optionAfter.isCall, false);
+
+        bool callsWin = p >= optionAfter.strike;
+        bool putWins = !callsWin;
+        address expectedPayee = putWins ? buyer.addr : seller.addr;
+
+        vm.prank(executor.addr);
+        market.exercise(optionId, p);
+
+        IMarket.Option memory optionAfterExercise = market.getOption(optionId);
+        assertEq(optionAfterExercise.isSettled, true);
+        assertEq(optionAfterExercise.isPendingFill, false);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        if (expectedPayee == buyer.addr) {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 5000);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        } else {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 0);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        }
     }
 
     function test_cancelOption() external {
@@ -174,6 +275,7 @@ contract MarketTest is Test {
             marketSymbol: SLUG,
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
+            settler: executor.addr,
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -185,7 +287,7 @@ contract MarketTest is Test {
     }
 
     function _createDefaultOption(Market market) private returns (uint256) {
-        (,,,, uint32 marketExpiry,,) = market.marketConfig();
+        (,,,,, uint32 marketExpiry,,) = market.marketConfig();
         uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
         IMarket.Option memory optionParams = IMarket.Option({
             id: 0,
@@ -197,6 +299,7 @@ contract MarketTest is Test {
             seller: seller.addr,
             buyer: address(0),
             expiry: optionExpiry,
+            isCall: true,
             isPendingFill: false,
             isSettled: false
         });
@@ -252,7 +355,8 @@ contract MarketTest is Test {
                 params.premiumToken,
                 params.seller,
                 params.buyer,
-                params.expiry
+                params.expiry,
+                params.isCall
             )
         );
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", domainSeparator, structHash));
