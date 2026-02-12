@@ -28,6 +28,7 @@ contract MarketTest is Test {
     uint32 constant END_DATE_TIMESTAMP = 1798675200;
 
     MarketFactory factory;
+    Market marketImpl;
 
     Vm.Wallet admin;
     Vm.Wallet executor;
@@ -42,7 +43,8 @@ contract MarketTest is Test {
         seller = vm.createWallet("seller");
         buyer = vm.createWallet("buyer");
 
-        factory = new MarketFactory(admin.addr);
+        marketImpl = new Market();
+        factory = new MarketFactory(admin.addr, address(marketImpl));
     }
 
     function test_createOptionMarket() external {
@@ -267,6 +269,69 @@ contract MarketTest is Test {
         assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
         assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
         assertEq(market.optionsCount(), 1);
+    }
+
+    function test_beaconProxyPattern() external {
+        assertEq(factory.implementation(), address(marketImpl));
+        assertEq(factory.owner(), admin.addr);
+
+        IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
+            marketName: SLUG,
+            marketSymbol: SLUG,
+            yOutcomeId: Y_OUTCOME,
+            nOutcomeId: N_OUTCOME,
+            settler: executor.addr,
+            marketExpiry: END_DATE_TIMESTAMP,
+            upperStrikeBound: 99,
+            lowerStrikeBound: 1
+        });
+
+        vm.prank(admin.addr);
+        Market market1 = Market(factory.createMarket(marketConfig));
+
+        marketConfig.marketName = "Different Market";
+        marketConfig.marketSymbol = "DIFF";
+
+        vm.prank(admin.addr);
+        Market market2 = Market(factory.createMarket(marketConfig));
+
+        assertEq(factory.markets(0), address(market1));
+        assertEq(factory.markets(1), address(market2));
+
+        (string memory name1,,,,,,,) = market1.marketConfig();
+        (string memory name2,,,,,,,) = market2.marketConfig();
+
+        assertEq(name1, SLUG);
+        assertEq(name2, "Different Market");
+    }
+
+    function test_upgradeImplementation() external {
+        IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
+            marketName: SLUG,
+            marketSymbol: SLUG,
+            yOutcomeId: Y_OUTCOME,
+            nOutcomeId: N_OUTCOME,
+            settler: executor.addr,
+            marketExpiry: END_DATE_TIMESTAMP,
+            upperStrikeBound: 99,
+            lowerStrikeBound: 1
+        });
+
+        vm.prank(admin.addr);
+        Market market = Market(factory.createMarket(marketConfig));
+
+        address oldImplementation = factory.implementation();
+        assertEq(oldImplementation, address(marketImpl));
+
+        Market newMarketImpl = new Market();
+
+        vm.prank(admin.addr);
+        factory.upgradeTo(address(newMarketImpl));
+
+        assertEq(factory.implementation(), address(newMarketImpl));
+
+        (string memory name,,,,,,,) = market.marketConfig();
+        assertEq(name, SLUG);
     }
 
     function _createDefaultOptionMarket() private returns (Market market_) {

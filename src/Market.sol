@@ -8,9 +8,10 @@ import {EIP712} from "@solady/utils/EIP712.sol";
 import {SignatureCheckerLib} from "@solady/utils/SignatureCheckerLib.sol";
 import {SafeTransferLib} from "@solady/utils/SafeTransferLib.sol";
 import {EnumerableSetLib} from "@solady/utils/EnumerableSetLib.sol";
+import {Initializable} from "@solady/utils/Initializable.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
 
-contract Market is IMarket, ERC721, EIP712 {
+contract Market is IMarket, ERC721, EIP712, Initializable {
     using SafeTransferLib for address;
     using EnumerableSetLib for EnumerableSetLib.Uint256Set;
 
@@ -47,7 +48,11 @@ contract Market is IMarket, ERC721, EIP712 {
     mapping(address => EnumerableSetLib.Uint256Set) _optionsWritten;
     mapping(address => EnumerableSetLib.Uint256Set) _optionsBought;
 
-    constructor(MarketConfig memory config) {
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(MarketConfig memory config) external initializer {
         marketConfig = config;
     }
 
