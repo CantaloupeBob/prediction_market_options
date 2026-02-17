@@ -10,6 +10,8 @@ import {ERC20} from "@solady/tokens/ERC20.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
 import {IConditionalTokens} from "src/interfaces/IConditionalTokens.sol";
 import {console2} from "forge-std/console2.sol";
+import {ERC1967Factory} from "@solady/utils/ERC1967Factory.sol";
+import {ERC1967FactoryConstants} from "@solady/utils/ERC1967FactoryConstants.sol";
 
 contract MarketTest is Test {
     IConditionalTokens constant CONDITIONAL_TOKENS = IConditionalTokens(0x4D97DCd97eC945f40cF65F87097ACe5EA0476045);
@@ -18,6 +20,7 @@ contract MarketTest is Test {
     address constant MAIN_EXCHANGE = 0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E;
     address constant NEG_RISK_MARKET = 0xC5d563A36AE78145C45a50134d48A1215220f80a;
     address constant NEG_RISK_ADAPTER = 0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296;
+    address constant POLYGON_CRE_FORWORDER_CONTRACT = 0x76c9cf548b4179F8901cda1f8623568b58215E62;
 
     // Will Jesus Christ return before 2027? Polymarket Info
     string constant SLUG = "will-jesus-christ-return-before-2027";
@@ -28,7 +31,9 @@ contract MarketTest is Test {
     uint32 constant END_DATE_TIMESTAMP = 1798675200;
 
     MarketFactory factory;
+    MarketFactory factoryImpl;
     Market marketImpl;
+    ERC1967Factory proxyFactory;
 
     Vm.Wallet admin;
     Vm.Wallet executor;
@@ -43,8 +48,25 @@ contract MarketTest is Test {
         seller = vm.createWallet("seller");
         buyer = vm.createWallet("buyer");
 
+        // Deploy or use the canonical ERC1967Factory
+        proxyFactory = ERC1967Factory(ERC1967FactoryConstants.ADDRESS);
+        // Etch the factory bytecode if it doesn't exist
+        if (address(proxyFactory).code.length == 0) {
+            vm.etch(address(proxyFactory), ERC1967FactoryConstants.BYTECODE);
+        }
+
+        // Deploy Market implementation
         marketImpl = new Market();
-        factory = new MarketFactory(admin.addr, address(marketImpl));
+
+        // Deploy MarketFactory implementation
+        factoryImpl = new MarketFactory(POLYGON_CRE_FORWORDER_CONTRACT, admin.addr, address(marketImpl));
+
+        // Deploy ERC1967 proxy for MarketFactory using the factory
+        address factoryProxy = proxyFactory.deploy(address(factoryImpl), admin.addr);
+
+        // Cast proxy to MarketFactory and initialize
+        factory = MarketFactory(factoryProxy);
+        factory.initialize(admin.addr, address(marketImpl));
     }
 
     function test_createOptionMarket() external {
@@ -332,6 +354,56 @@ contract MarketTest is Test {
 
         (string memory name,,,,,,,) = market.marketConfig();
         assertEq(name, SLUG);
+    }
+
+    function test_upgradeFactoryImplementation() external {
+        IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
+            marketName: SLUG,
+            marketSymbol: SLUG,
+            yOutcomeId: Y_OUTCOME,
+            nOutcomeId: N_OUTCOME,
+            settler: executor.addr,
+            marketExpiry: END_DATE_TIMESTAMP,
+            upperStrikeBound: 99,
+            lowerStrikeBound: 1
+        });
+
+        vm.prank(admin.addr);
+        Market market1 = Market(factory.createMarket(marketConfig));
+
+        assertEq(factory.markets(0), address(market1));
+        assertEq(factory.canCreate(admin.addr), true);
+        assertEq(factory.owner(), admin.addr);
+        assertEq(factory.implementation(), address(marketImpl));
+        assertEq(proxyFactory.adminOf(address(factory)), admin.addr, "Admin should be set correctly");
+
+        MarketFactory newFactoryImpl =
+            new MarketFactory(POLYGON_CRE_FORWORDER_CONTRACT, admin.addr, address(marketImpl));
+
+        vm.expectEmit(true, true, false, false);
+        emit ERC1967Factory.Upgraded(address(factory), address(newFactoryImpl));
+
+        vm.prank(admin.addr);
+        proxyFactory.upgrade(address(factory), address(newFactoryImpl));
+
+        assertEq(factory.markets(0), address(market1), "Market address should be preserved");
+        assertEq(factory.canCreate(admin.addr), true, "Creator permissions should be preserved");
+        assertEq(factory.owner(), admin.addr, "Owner should be preserved");
+        assertEq(factory.implementation(), address(marketImpl), "Market implementation should be preserved");
+
+        marketConfig.marketName = "New Market After Upgrade";
+        marketConfig.marketSymbol = "UPGRADED";
+
+        vm.prank(admin.addr);
+        Market market2 = Market(factory.createMarket(marketConfig));
+
+        assertEq(factory.markets(1), address(market2), "New market should be created");
+
+        (string memory name1,,,,,,,) = market1.marketConfig();
+        (string memory name2,,,,,,,) = market2.marketConfig();
+
+        assertEq(name1, SLUG, "Original market should retain its config");
+        assertEq(name2, "New Market After Upgrade", "New market should have new config");
     }
 
     function _createDefaultOptionMarket() private returns (Market market_) {

@@ -6,6 +6,7 @@ import {MarketFactory} from "../src/MarketFactory.sol";
 import {Market} from "../src/Market.sol";
 import {IMarket} from "../src/interfaces/IMarket.sol";
 import {console} from "forge-std/console.sol";
+import {ERC1967Factory} from "@solady/utils/ERC1967Factory.sol";
 
 contract MarketScript is Script {
     // Will Jesus Christ return before 2027? Polymarket Info
@@ -16,14 +17,25 @@ contract MarketScript is Script {
     uint256 constant N_OUTCOME = 51797157743046504218541616681751597845468055908324407922581755135522797852101;
     uint32 constant END_DATE_TIMESTAMP = 1798675200;
 
-    // Protocol
     address constant SETTLER = 0x54db3299809370E4821bCd6C6A884ED5C32283c4;
+    address constant POLYGON_CRE_FORWARDER = 0x76c9cf548b4179F8901cda1f8623568b58215E62;
     MarketFactory constant FACTORY = MarketFactory(0xdcb242588414BEAaD781232b3AF0EB967e4F771F);
+
+    ERC1967Factory constant PROXY_FACTORY = ERC1967Factory(0x0000000000006396FF2a80c067f99B3d2Ab4Df24);
 
     function deploy() external {
         vm.startBroadcast();
+
         Market marketImpl = new Market();
-        new MarketFactory(SETTLER, address(marketImpl));
+        MarketFactory factoryImpl = new MarketFactory(POLYGON_CRE_FORWARDER, msg.sender, address(marketImpl));
+        address factoryProxy = PROXY_FACTORY.deploy(address(factoryImpl), msg.sender);
+        MarketFactory(factoryProxy).initialize(msg.sender, address(marketImpl));
+
+        console.log("Market Implementation:", address(marketImpl));
+        console.log("Factory Implementation:", address(factoryImpl));
+        console.log("Factory Proxy:", factoryProxy);
+        console.log("Proxy Admin:", msg.sender);
+
         vm.stopBroadcast();
     }
 

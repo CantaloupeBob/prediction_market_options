@@ -2,12 +2,12 @@
 pragma solidity 0.8.30;
 
 import {Market} from "src/Market.sol";
-import {Ownable} from "@solady/auth/Ownable.sol";
-import {UpgradeableBeacon} from "@solady/utils/UpgradeableBeacon.sol";
+import {CreReceiver} from "src/cre/CreReceiver.sol";
 import {LibClone} from "@solady/utils/LibClone.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
+import {Initializable} from "@solady/utils/Initializable.sol";
 
-contract MarketFactory is UpgradeableBeacon {
+contract MarketFactory is CreReceiver, Initializable {
     error MarketFactory__Unauthorized();
 
     event CreateMarket(IMarket.MarketConfig indexed marketConfig);
@@ -15,9 +15,27 @@ contract MarketFactory is UpgradeableBeacon {
     address[] public markets;
     mapping(address => bool) public canCreate;
 
-    constructor(address creator, address marketImpl) UpgradeableBeacon(creator, marketImpl) {
-        canCreate[creator] = true;
+    constructor(address _creForwarder, address _owner, address _marketImpl)
+        CreReceiver(_creForwarder, _owner, _marketImpl)
+    {
+        _disableInitializers();
     }
+
+    function initialize(address _owner, address _marketImpl) external initializer {
+        canCreate[_owner] = true;
+        // Initialize the beacon's implementation and owner in proxy storage
+        assembly {
+            sstore(0x911c5a209f08d5ec5e, _marketImpl)
+            sstore(0x4343a0dc92ed22dbfc, _owner)
+        }
+    }
+
+    function _processReport(
+        bytes calldata /* report */
+    )
+        internal
+        override
+    {}
 
     function createMarket(IMarket.MarketConfig calldata config) external onlyCreator(msg.sender) returns (address) {
         address market = LibClone.deployERC1967BeaconProxy(address(this));
@@ -29,6 +47,10 @@ contract MarketFactory is UpgradeableBeacon {
 
     function setCreator(address creator, bool isEnabled) external onlyOwner {
         canCreate[creator] = isEnabled;
+    }
+
+    function getMarkets() external view returns (address[] memory) {
+        return markets;
     }
 
     modifier onlyCreator(address creator) {

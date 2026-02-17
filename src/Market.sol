@@ -38,6 +38,8 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
     bytes32 public constant OPTION_TYPEHASH = keccak256(
         "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry,bool isCall)"
     );
+    uint16 constant UPPER_P_BOUND = 100;
+    uint16 constant LOWER_P_BOUND = 0;
     address constant CTF_CONTRACT = 0x4D97DCd97eC945f40cF65F87097ACe5EA0476045;
 
     MarketConfig public marketConfig;
@@ -94,7 +96,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
     function exercise(uint256 optionId, uint16 p) external isAuthorized(msg.sender) returns (uint256) {
         Option storage option = options[optionId];
 
-        require(p >= 0 && p <= 100, Market__InvalidPrice());
+        require(p >= LOWER_P_BOUND && p <= UPPER_P_BOUND, Market__InvalidPrice());
         require(!option.isPendingFill, Market__PendingFill());
         require(!option.isSettled, Market__AlreadySettled());
 
