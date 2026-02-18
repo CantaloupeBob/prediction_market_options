@@ -31,7 +31,7 @@ contract MarketFactory is CreReceiver, Initializable {
     }
 
     function _processReport(
-        bytes calldata /* report */
+        bytes calldata 
     )
         internal
         override
