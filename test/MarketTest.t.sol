@@ -20,7 +20,6 @@ contract MarketTest is Test {
     address constant MAIN_EXCHANGE = 0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E;
     address constant NEG_RISK_MARKET = 0xC5d563A36AE78145C45a50134d48A1215220f80a;
     address constant NEG_RISK_ADAPTER = 0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296;
-    address constant POLYGON_CRE_FORWORDER_CONTRACT = 0x76c9cf548b4179F8901cda1f8623568b58215E62;
 
     // Will Jesus Christ return before 2027? Polymarket Info
     string constant SLUG = "will-jesus-christ-return-before-2027";
@@ -29,6 +28,11 @@ contract MarketTest is Test {
     uint256 constant Y_OUTCOME = 69324317355037271422943965141382095011871956039434394956830818206664869608517;
     uint256 constant N_OUTCOME = 51797157743046504218541616681751597845468055908324407922581755135522797852101;
     uint32 constant END_DATE_TIMESTAMP = 1798675200;
+
+    // CRE
+    address constant POLYGON_CRE_FORWORDER_CONTRACT = 0xF458D621885E29a5003eA9bbBA5280D54e19b1Ce;
+    string constant WORKFLOW_NAME = "tx-executor-production";
+    bytes32 constant WORKFLOW_ID = hex"01";
 
     MarketFactory factory;
     MarketFactory factoryImpl;
@@ -58,6 +62,7 @@ contract MarketTest is Test {
         address factoryProxy = proxyFactory.deploy(address(factoryImpl), admin.addr);
         factory = MarketFactory(factoryProxy);
         factory.initialize(admin.addr, address(marketImpl));
+        _configureCREPerms();
     }
 
     function test_createOptionMarket() external {
@@ -67,6 +72,7 @@ contract MarketTest is Test {
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
             settler: executor.addr,
+            marketFactory: address(0),
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -77,14 +83,24 @@ contract MarketTest is Test {
         vm.prank(admin.addr);
         Market market = Market(factory.createMarket(marketConfig));
 
-        (string memory mn, string memory ms, uint256 yId, uint256 nId, address set, uint32 me, uint16 usb, uint16 lsb) =
-            market.marketConfig();
+        (
+            string memory mn,
+            string memory ms,
+            uint256 yId,
+            uint256 nId,
+            address set,
+            address mf,
+            uint32 me,
+            uint16 usb,
+            uint16 lsb
+        ) = market.marketConfig();
 
         assertEq(mn, marketConfig.marketName);
         assertEq(ms, marketConfig.marketSymbol);
         assertEq(yId, marketConfig.yOutcomeId);
         assertEq(nId, marketConfig.nOutcomeId);
         assertEq(set, executor.addr);
+        assertEq(mf, address(factory));
         assertEq(me, marketConfig.marketExpiry);
         assertEq(usb, marketConfig.upperStrikeBound);
         assertEq(lsb, marketConfig.lowerStrikeBound);
@@ -193,7 +209,7 @@ contract MarketTest is Test {
     function testFuzz_exerciseOption_PutOption(uint16 p) external {
         p = uint16(bound(p, 0, 100));
         Market market = _createDefaultOptionMarket();
-        (,,,,, uint32 marketExpiry,,) = market.marketConfig();
+        (,,,,,, uint32 marketExpiry,,) = market.marketConfig();
         uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
         IMarket.Option memory putOptionParams = IMarket.Option({
             id: 0,
@@ -294,6 +310,7 @@ contract MarketTest is Test {
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
             settler: executor.addr,
+            marketFactory: address(0),
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -311,8 +328,8 @@ contract MarketTest is Test {
         assertEq(factory.markets(0), address(market1));
         assertEq(factory.markets(1), address(market2));
 
-        (string memory name1,,,,,,,) = market1.marketConfig();
-        (string memory name2,,,,,,,) = market2.marketConfig();
+        (string memory name1,,,,,,,,) = market1.marketConfig();
+        (string memory name2,,,,,,,,) = market2.marketConfig();
 
         assertEq(name1, SLUG);
         assertEq(name2, "Different Market");
@@ -325,6 +342,7 @@ contract MarketTest is Test {
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
             settler: executor.addr,
+            marketFactory: address(0),
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -343,7 +361,7 @@ contract MarketTest is Test {
 
         assertEq(factory.implementation(), address(newMarketImpl));
 
-        (string memory name,,,,,,,) = market.marketConfig();
+        (string memory name,,,,,,,,) = market.marketConfig();
         assertEq(name, SLUG);
     }
 
@@ -354,6 +372,7 @@ contract MarketTest is Test {
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
             settler: executor.addr,
+            marketFactory: address(0),
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -390,8 +409,8 @@ contract MarketTest is Test {
 
         assertEq(factory.markets(1), address(market2), "New market should be created");
 
-        (string memory name1,,,,,,,) = market1.marketConfig();
-        (string memory name2,,,,,,,) = market2.marketConfig();
+        (string memory name1,,,,,,,,) = market1.marketConfig();
+        (string memory name2,,,,,,,,) = market2.marketConfig();
 
         assertEq(name1, SLUG, "Original market should retain its config");
         assertEq(name2, "New Market After Upgrade", "New market should have new config");
@@ -404,6 +423,7 @@ contract MarketTest is Test {
             yOutcomeId: Y_OUTCOME,
             nOutcomeId: N_OUTCOME,
             settler: executor.addr,
+            marketFactory: address(0),
             marketExpiry: END_DATE_TIMESTAMP,
             upperStrikeBound: 99,
             lowerStrikeBound: 1
@@ -415,7 +435,7 @@ contract MarketTest is Test {
     }
 
     function _createDefaultOption(Market market) private returns (uint256) {
-        (,,,,, uint32 marketExpiry,,) = market.marketConfig();
+        (,,,,,, uint32 marketExpiry,,) = market.marketConfig();
         uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
         IMarket.Option memory optionParams = IMarket.Option({
             id: 0,
@@ -491,5 +511,13 @@ contract MarketTest is Test {
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", domainSeparator, structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signer.privateKey, digest);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _configureCREPerms() private {
+        vm.startPrank(admin.addr);
+        factory.setExpectedWorkflowName(WORKFLOW_NAME);
+        factory.setExpectedWorkflowId(WORKFLOW_ID);
+        factory.setExpectedAuthor(executor.addr);
+        vm.stopPrank();
     }
 }

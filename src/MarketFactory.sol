@@ -5,10 +5,13 @@ import {Market} from "src/Market.sol";
 import {CreReceiver} from "src/cre/CreReceiver.sol";
 import {LibClone} from "@solady/utils/LibClone.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
+import {IMarketFactory} from "src/interfaces/IMarketFactory.sol";
 import {Initializable} from "@solady/utils/Initializable.sol";
 
-contract MarketFactory is CreReceiver, Initializable {
+contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
     error MarketFactory__Unauthorized();
+    error MarketFactory__CallFailed();
+    error MarketFactory__InvalidOperation();
 
     event CreateMarket(IMarket.MarketConfig indexed marketConfig);
 
@@ -23,19 +26,12 @@ contract MarketFactory is CreReceiver, Initializable {
 
     function initialize(address _owner, address _marketImpl) external initializer {
         canCreate[_owner] = true;
-        // Initialize the beacon's implementation and owner in proxy storage
+        // Initialize the beacons implementation and owner in proxy storage
         assembly {
             sstore(0x911c5a209f08d5ec5e, _marketImpl)
             sstore(0x4343a0dc92ed22dbfc, _owner)
         }
     }
-
-    function _processReport(
-        bytes calldata 
-    )
-        internal
-        override
-    {}
 
     function createMarket(IMarket.MarketConfig calldata config) external onlyCreator(msg.sender) returns (address) {
         address market = LibClone.deployERC1967BeaconProxy(address(this));
@@ -43,6 +39,35 @@ contract MarketFactory is CreReceiver, Initializable {
         markets.push(market);
         emit CreateMarket(config);
         return market;
+    }
+
+    function _processReport(bytes calldata data) internal override {
+        _executeOperation(data);
+    }
+
+    function _executeOperation(bytes calldata data) private {
+        (address market, IMarketFactory.Op op, bytes memory execData) =
+            abi.decode(data, (address, IMarketFactory.Op, bytes));
+        bytes memory callData;
+
+        if (op == IMarketFactory.Op.WRITE) {
+            (IMarket.Option memory option, bytes memory signature) = abi.decode(execData, (IMarket.Option, bytes));
+            callData = abi.encodeCall(IMarket.writeOption, (option, signature));
+        } else if (op == IMarketFactory.Op.BUY) {
+            (uint256 optionId, address buyer, bytes memory signature) = abi.decode(execData, (uint256, address, bytes));
+            callData = abi.encodeCall(IMarket.buyOption, (optionId, buyer, signature));
+        } else if (op == IMarketFactory.Op.EXERCISE) {
+            (uint256 optionId, uint16 p) = abi.decode(execData, (uint256, uint16));
+            callData = abi.encodeCall(IMarket.exercise, (optionId, p));
+        } else if (op == IMarketFactory.Op.CANCEL) {
+            (uint256 optionId, bytes memory signature) = abi.decode(execData, (uint256, bytes));
+            callData = abi.encodeCall(IMarket.cancelOption, (optionId, signature));
+        } else {
+            revert MarketFactory__InvalidOperation();
+        }
+
+        (bool success,) = market.call(callData);
+        require(success, MarketFactory__CallFailed());
     }
 
     function setCreator(address creator, bool isEnabled) external onlyOwner {

@@ -55,6 +55,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
     }
 
     function initialize(MarketConfig memory config) external initializer {
+        config.marketFactory = msg.sender;
         marketConfig = config;
     }
 
@@ -93,7 +94,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         return option.id;
     }
 
-    function exercise(uint256 optionId, uint16 p) external isAuthorized(msg.sender) returns (uint256) {
+    function exercise(uint256 optionId, uint16 p) external isAuthorized returns (uint256) {
         Option storage option = options[optionId];
 
         require(p >= LOWER_P_BOUND && p <= UPPER_P_BOUND, Market__InvalidPrice());
@@ -215,8 +216,8 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         return this.onERC1155BatchReceived.selector;
     }
 
-    modifier isAuthorized(address settler) {
-        require(marketConfig.settler == settler, Market__Unauthorized());
+    modifier isAuthorized() {
+        require(msg.sender == marketConfig.settler || msg.sender == marketConfig.marketFactory, Market__Unauthorized());
         _;
     }
 }

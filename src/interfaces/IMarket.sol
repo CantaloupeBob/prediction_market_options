@@ -8,6 +8,7 @@ interface IMarket {
         uint256 yOutcomeId;
         uint256 nOutcomeId;
         address settler;
+        address marketFactory;
         uint32 marketExpiry;
         uint16 upperStrikeBound;
         uint16 lowerStrikeBound;
@@ -27,4 +28,9 @@ interface IMarket {
         bool isPendingFill;
         bool isSettled;
     }
+
+    function writeOption(Option memory params, bytes memory signature) external returns (uint256);
+    function buyOption(uint256 optionId, address buyer, bytes memory signature) external returns (uint256);
+    function exercise(uint256 optionId, uint16 p) external returns (uint256);
+    function cancelOption(uint256 optionId, bytes memory signature) external;
 }
