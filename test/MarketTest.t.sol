@@ -48,23 +48,14 @@ contract MarketTest is Test {
         seller = vm.createWallet("seller");
         buyer = vm.createWallet("buyer");
 
-        // Deploy or use the canonical ERC1967Factory
         proxyFactory = ERC1967Factory(ERC1967FactoryConstants.ADDRESS);
-        // Etch the factory bytecode if it doesn't exist
         if (address(proxyFactory).code.length == 0) {
             vm.etch(address(proxyFactory), ERC1967FactoryConstants.BYTECODE);
         }
 
-        // Deploy Market implementation
         marketImpl = new Market();
-
-        // Deploy MarketFactory implementation
         factoryImpl = new MarketFactory(POLYGON_CRE_FORWORDER_CONTRACT, admin.addr, address(marketImpl));
-
-        // Deploy ERC1967 proxy for MarketFactory using the factory
         address factoryProxy = proxyFactory.deploy(address(factoryImpl), admin.addr);
-
-        // Cast proxy to MarketFactory and initialize
         factory = MarketFactory(factoryProxy);
         factory.initialize(admin.addr, address(marketImpl));
     }
@@ -484,6 +475,7 @@ contract MarketTest is Test {
         bytes32 structHash = keccak256(
             abi.encode(
                 market.OPTION_TYPEHASH(),
+                address(market),
                 params.id,
                 params.size,
                 params.optionTokenId,

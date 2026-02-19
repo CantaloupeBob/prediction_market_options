@@ -36,7 +36,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
     event OptionCanceled(MarketConfig indexed marketConfig, Option indexed option);
 
     bytes32 public constant OPTION_TYPEHASH = keccak256(
-        "Option(uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry,bool isCall)"
+        "Option(address market,uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry,bool isCall)"
     );
     uint16 constant UPPER_P_BOUND = 100;
     uint16 constant LOWER_P_BOUND = 0;
@@ -158,6 +158,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         bytes32 structHash = keccak256(
             abi.encode(
                 OPTION_TYPEHASH,
+                address(this),
                 params.id,
                 params.size,
                 params.optionTokenId,
