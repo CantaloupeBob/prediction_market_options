@@ -8,6 +8,7 @@ import {Market} from "src/Market.sol";
 import {ERC1155} from "@solady/tokens/ERC1155.sol";
 import {ERC20} from "@solady/tokens/ERC20.sol";
 import {IMarket} from "src/interfaces/IMarket.sol";
+import {IMarketFactory} from "src/interfaces/IMarketFactory.sol";
 import {IConditionalTokens} from "src/interfaces/IConditionalTokens.sol";
 import {console2} from "forge-std/console2.sol";
 import {ERC1967Factory} from "@solady/utils/ERC1967Factory.sol";
@@ -416,6 +417,164 @@ contract MarketTest is Test {
         assertEq(name2, "New Market After Upgrade", "New market should have new config");
     }
 
+    function test_cre_writeOption() external {
+        Market market = _createDefaultOptionMarket();
+
+        (,,,,,, uint32 marketExpiry,,) = market.marketConfig();
+        uint32 optionExpiry = uint32(block.timestamp) + uint32(((marketExpiry - block.timestamp) / 2));
+        IMarket.Option memory optionParams = IMarket.Option({
+            id: 0,
+            size: 5000,
+            optionTokenId: Y_OUTCOME,
+            strike: 50,
+            premium: 10e6,
+            premiumToken: address(USDC),
+            seller: seller.addr,
+            buyer: address(0),
+            expiry: optionExpiry,
+            isCall: true,
+            isPendingFill: false,
+            isSettled: false
+        });
+        bytes memory sellerSignature = _signOptionData(seller, market, optionParams);
+
+        _createShares({recipient: seller, conditionId: CONDITION_ID, amount: 5000});
+        _approveShares({owner: seller, operator: address(market), approved: true});
+
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        assertEq(market.optionsCount(), 0);
+
+        bytes memory execData = abi.encode(optionParams, sellerSignature);
+        _callViaCrePath(address(market), IMarketFactory.Op.WRITE, execData);
+
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+
+        assertEq(market.optionsCount(), 1);
+        IMarket.Option memory option = market.getOption(1);
+        assertEq(option.id, 1);
+        assertEq(option.size, 5000);
+        assertEq(option.optionTokenId, Y_OUTCOME);
+        assertEq(option.strike, 50);
+        assertEq(option.premium, 10e6);
+        assertEq(option.premiumToken, address(USDC));
+        assertEq(option.seller, seller.addr);
+        assertEq(option.buyer, address(0));
+        assertEq(option.isPendingFill, true);
+        assertEq(option.isSettled, false);
+
+        IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
+        assertEq(sellerOptions.length, 1);
+        assertEq(sellerOptions[0].id, 1);
+        assertEq(sellerOptions[0].size, 5000);
+        assertEq(sellerOptions[0].seller, seller.addr);
+    }
+
+    function test_cre_buyOption() external {
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+        IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
+
+        deal(address(USDC), buyer.addr, optionBefore.premium);
+        vm.prank(buyer.addr);
+        USDC.approve(address(market), optionBefore.premium);
+
+        bytes memory signature = _signOptionData(buyer, market, optionBefore);
+
+        assertEq(optionBefore.buyer, address(0));
+        assertEq(optionBefore.isPendingFill, true);
+        assertEq(USDC.balanceOf(buyer.addr), optionBefore.premium);
+        assertEq(USDC.balanceOf(optionBefore.seller), 0);
+        assertEq(buyerOptionsBefore.length, 0);
+        vm.expectRevert("TokenDoesNotExist()");
+        market.ownerOf(optionBefore.id);
+
+        bytes memory execData = abi.encode(optionBefore.id, buyer.addr, signature);
+        _callViaCrePath(address(market), IMarketFactory.Op.BUY, execData);
+
+        IMarket.Option memory optionAfter = market.getOption(optionBefore.id);
+        assertEq(optionAfter.buyer, buyer.addr);
+        assertEq(optionAfter.isPendingFill, false);
+        assertEq(USDC.balanceOf(buyer.addr), 0);
+        assertEq(USDC.balanceOf(optionBefore.seller), optionAfter.premium);
+        assertEq(market.ownerOf(optionBefore.id), optionAfter.buyer);
+
+        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        assertEq(buyerOptionsAfter.length, 1);
+    }
+
+    function testFuzz_cre_exerciseOption(uint16 p) external {
+        p = uint16(bound(p, 0, 100));
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+        deal(address(USDC), buyer.addr, optionBefore.premium);
+        vm.prank(buyer.addr);
+        USDC.approve(address(market), optionBefore.premium);
+
+        bytes memory buySignature = _signOptionData(buyer, market, optionBefore);
+        vm.prank(executor.addr);
+        IMarket.Option memory optionAfter =
+            market.getOption(market.buyOption(optionBefore.id, buyer.addr, buySignature));
+
+        assertEq(optionAfter.isSettled, false);
+        assertEq(optionAfter.isPendingFill, false);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+
+        bool callsWin = p >= optionAfter.strike;
+        address expectedPayee = callsWin ? buyer.addr : seller.addr;
+
+        bytes memory execData = abi.encode(optionBefore.id, p);
+        _callViaCrePath(address(market), IMarketFactory.Op.EXERCISE, execData);
+
+        IMarket.Option memory optionAfterExercise = market.getOption(optionBefore.id);
+        assertEq(optionAfterExercise.isSettled, true);
+        assertEq(optionAfterExercise.isPendingFill, false);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        if (expectedPayee == buyer.addr) {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 5000);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        } else {
+            assertEq(CONDITIONAL_TOKENS.balanceOf(buyer.addr, Y_OUTCOME), 0);
+            assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        }
+    }
+
+    function test_cre_cancelOption() external {
+        Market market = _createDefaultOptionMarket();
+        IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
+
+        bytes memory signature = _signOptionData(seller, market, optionBefore);
+
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 5000);
+        assertEq(optionBefore.isPendingFill, true);
+        assertEq(market.optionsCount(), 1);
+
+        IMarket.Option[] memory sellerOptionsBefore = market.getOptions(seller.addr, true);
+        assertEq(sellerOptionsBefore.length, 1);
+
+        bytes memory execData = abi.encode(optionBefore.id, signature);
+        _callViaCrePath(address(market), IMarketFactory.Op.CANCEL, execData);
+
+        IMarket.Option memory optionAfter = market.getOption(optionBefore.id);
+        assertEq(optionAfter.id, 0);
+        assertEq(optionAfter.size, 0);
+        assertEq(optionAfter.seller, address(0));
+        assertEq(optionAfter.buyer, address(0));
+        assertEq(optionAfter.isPendingFill, false);
+
+        IMarket.Option[] memory sellerOptionsAfter = market.getOptions(seller.addr, true);
+        assertEq(sellerOptionsAfter.length, 0);
+        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        assertEq(buyerOptionsAfter.length, 0);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
+        assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
+        assertEq(market.optionsCount(), 1);
+    }
+
     function _createDefaultOptionMarket() private returns (Market market_) {
         IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
             marketName: SLUG,
@@ -511,6 +670,33 @@ contract MarketTest is Test {
         bytes32 digest = keccak256(abi.encodePacked(hex"1901", domainSeparator, structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signer.privateKey, digest);
         return abi.encodePacked(r, s, v);
+    }
+
+    function _buildCreMetadata() private view returns (bytes memory) {
+        bytes32 hash = sha256(bytes(WORKFLOW_NAME));
+        bytes memory hexStr = _bytesToHexString(abi.encodePacked(hash));
+        bytes10 workflowName;
+        assembly {
+            workflowName := mload(add(hexStr, 32))
+        }
+        return abi.encodePacked(WORKFLOW_ID, workflowName, executor.addr);
+    }
+
+    function _callViaCrePath(address market, IMarketFactory.Op op, bytes memory execData) private {
+        bytes memory report = abi.encode(market, op, execData);
+        bytes memory metadata = _buildCreMetadata();
+        vm.prank(POLYGON_CRE_FORWORDER_CONTRACT);
+        factory.onReport(metadata, report);
+    }
+
+    function _bytesToHexString(bytes memory data) private pure returns (bytes memory) {
+        bytes memory hexChars = "0123456789abcdef";
+        bytes memory hexString = new bytes(data.length * 2);
+        for (uint256 i = 0; i < data.length; i++) {
+            hexString[i * 2] = hexChars[uint8(data[i] >> 4)];
+            hexString[i * 2 + 1] = hexChars[uint8(data[i] & 0x0f)];
+        }
+        return hexString;
     }
 
     function _configureCREPerms() private {
