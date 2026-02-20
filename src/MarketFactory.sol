@@ -51,8 +51,9 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
         bytes memory callData;
 
         if (op == IMarketFactory.Op.WRITE) {
-            (IMarket.Option memory option, bytes memory signature) = abi.decode(execData, (IMarket.Option, bytes));
-            callData = abi.encodeCall(IMarket.writeOption, (option, signature));
+            (IMarket.Option memory option, address sellerOwner, bytes memory signature) =
+                abi.decode(execData, (IMarket.Option, address, bytes));
+            callData = abi.encodeCall(IMarket.writeOption, (option, sellerOwner, signature));
         } else if (op == IMarketFactory.Op.BUY) {
             (uint256 optionId, address buyer, bytes memory signature) = abi.decode(execData, (uint256, address, bytes));
             callData = abi.encodeCall(IMarket.buyOption, (optionId, buyer, signature));

@@ -9,3 +9,4 @@ optimizer = true
 
 [rpc_endpoints]
 polygon = "${POLYGON_RPC_URL}"
+base = "${BASE_RPC_URL}"

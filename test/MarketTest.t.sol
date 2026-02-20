@@ -232,7 +232,7 @@ contract MarketTest is Test {
         _approveShares({owner: seller, operator: address(market), approved: true});
 
         vm.prank(executor.addr);
-        uint256 optionId = market.writeOption(putOptionParams, sellerSignature);
+        uint256 optionId = market.writeOption(putOptionParams, seller.addr, sellerSignature);
 
         IMarket.Option memory optionBefore = market.getOption(optionId);
         deal(address(USDC), buyer.addr, optionBefore.premium);
@@ -445,7 +445,7 @@ contract MarketTest is Test {
         assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
         assertEq(market.optionsCount(), 0);
 
-        bytes memory execData = abi.encode(optionParams, sellerSignature);
+        bytes memory execData = abi.encode(optionParams, seller.addr, sellerSignature);
         _callViaCrePath(address(market), IMarketFactory.Op.WRITE, execData);
 
         assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 0);
@@ -620,7 +620,7 @@ contract MarketTest is Test {
         assertEq(market.optionsCount(), 0);
 
         vm.prank(executor.addr);
-        uint256 optionId = market.writeOption(optionParams, sellerSignature);
+        uint256 optionId = market.writeOption(optionParams, seller.addr, sellerSignature);
         return optionId;
     }
 

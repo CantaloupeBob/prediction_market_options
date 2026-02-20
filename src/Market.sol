@@ -59,8 +59,8 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         marketConfig = config;
     }
 
-    function writeOption(Option memory params, bytes memory signature) external returns (uint256) {
-        _verifySignature(params, params.seller, signature);
+    function writeOption(Option memory params, address sellerOwner, bytes memory signature) external returns (uint256) {
+        _verifySignature(params, sellerOwner, signature);
         _validateOptionParams(params);
 
         params.id = ++optionsCount;

@@ -18,13 +18,13 @@ contract MarketScript is Script {
     uint32 constant END_DATE_TIMESTAMP = 1798675200;
 
     address constant SETTLER = 0x54db3299809370E4821bCd6C6A884ED5C32283c4;
-    address constant POLYGON_CRE_FORWARDER_PROD = 0x76c9cf548b4179F8901cda1f8623568b58215E62; 
-    address constant POLYGON_CRE_FORWARDER_SIM = 0xF458D621885E29a5003eA9bbBA5280D54e19b1Ce; 
+    address constant POLYGON_CRE_FORWARDER_PROD = 0x76c9cf548b4179F8901cda1f8623568b58215E62;
+    address constant POLYGON_CRE_FORWARDER_SIM = 0xF458D621885E29a5003eA9bbBA5280D54e19b1Ce;
     MarketFactory constant FACTORY = MarketFactory(0xD729A94d6366a4fEac4A6869C8b3573cEe4701A9); // Deployed protocol instance
     ERC1967Factory constant PROXY_FACTORY = ERC1967Factory(0x0000000000006396FF2a80c067f99B3d2Ab4Df24);
 
-    function deploy() external {
-        vm.startBroadcast(); 
+    function deployProtocol() external {
+        vm.startBroadcast();
         address deployer = 0x42A7b811d096Cba5b3bbf346361106bDe275C8d7;
         Market marketImpl = new Market();
         MarketFactory factoryImpl = new MarketFactory(POLYGON_CRE_FORWARDER_PROD, deployer, address(marketImpl));
@@ -37,6 +37,17 @@ contract MarketScript is Script {
         console.log("Proxy Admin:", deployer);
 
         vm.stopBroadcast();
+    }
+
+    function upgradeToNewMarketImpl() external {
+        console.log("Old Market Impl", FACTORY.implementation());
+
+        vm.startBroadcast();
+        Market newImpl = new Market();
+        FACTORY.upgradeTo(address(newImpl));
+        vm.stopBroadcast();
+
+        console.log("New Market Impl", FACTORY.implementation());
     }
 
     function createMarket() external {
@@ -53,6 +64,12 @@ contract MarketScript is Script {
         });
         vm.broadcast();
         FACTORY.createMarket(marketConfig);
+    }
+
+    function setCreator() external {
+        address creator = 0xddB2303e730eeFb9ADC7727Bd256Eb7F722cE07b;
+        vm.broadcast();
+        FACTORY.setCreator(creator, true);
     }
 
     function viewCanCreate() external view {

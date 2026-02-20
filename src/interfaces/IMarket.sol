@@ -29,7 +29,7 @@ interface IMarket {
         bool isSettled;
     }
 
-    function writeOption(Option memory params, bytes memory signature) external returns (uint256);
+    function writeOption(Option memory params, address sellerOwner, bytes memory signature) external returns (uint256);
     function buyOption(uint256 optionId, address buyer, bytes memory signature) external returns (uint256);
     function exercise(uint256 optionId, uint16 p) external returns (uint256);
     function cancelOption(uint256 optionId, bytes memory signature) external;
