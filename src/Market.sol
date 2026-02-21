@@ -146,7 +146,16 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         return options[id];
     }
 
-    function getOptions(address holder, bool isSeller) external view returns (Option[] memory) {
+    function getOptions() external view returns (Option[] memory) {
+        uint256[] memory ids = _allOptionIds.values();
+        Option[] memory m_options = new Option[](ids.length);
+        for (uint256 i; i < ids.length; i++) {
+            m_options[i] = options[ids[i]];
+        }
+        return m_options;
+    }
+
+    function getUserOptions(address holder, bool isSeller) external view returns (Option[] memory) {
         uint256[] memory ids = isSeller ? _optionsWritten[holder].values() : _optionsBought[holder].values();
         Option[] memory m_options = new Option[](ids.length);
         for (uint256 i; i < ids.length; i++) {

@@ -130,7 +130,7 @@ contract MarketTest is Test {
         assertEq(option.isPendingFill, true);
         assertEq(option.isSettled, false);
 
-        IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptions = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptions.length, 1);
         assertEq(sellerOptions[0].id, 1);
         assertEq(sellerOptions[0].size, 5000);
@@ -140,7 +140,7 @@ contract MarketTest is Test {
     function test_buyOption() external {
         Market market = _createDefaultOptionMarket();
         IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
-        IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsBefore = market.getUserOptions(buyer.addr, false);
 
         deal(address(USDC), buyer.addr, optionBefore.premium);
         vm.prank(buyer.addr);
@@ -165,7 +165,7 @@ contract MarketTest is Test {
         assertEq(USDC.balanceOf(optionBefore.seller), optionAfter.premium);
         assertEq(market.ownerOf(optionBefore.id), optionAfter.buyer);
 
-        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsAfter = market.getUserOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 1);
     }
 
@@ -279,7 +279,7 @@ contract MarketTest is Test {
         assertEq(optionBefore.isPendingFill, true);
         assertEq(market.optionsCount(), 1);
 
-        IMarket.Option[] memory sellerOptionsBefore = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptionsBefore = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptionsBefore.length, 1);
 
         vm.prank(executor.addr);
@@ -292,9 +292,9 @@ contract MarketTest is Test {
         assertEq(optionAfter.buyer, address(0));
         assertEq(optionAfter.isPendingFill, false);
 
-        IMarket.Option[] memory sellerOptionsAfter = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptionsAfter = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptionsAfter.length, 0);
-        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsAfter = market.getUserOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 0);
         assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
         assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
@@ -464,7 +464,7 @@ contract MarketTest is Test {
         assertEq(option.isPendingFill, true);
         assertEq(option.isSettled, false);
 
-        IMarket.Option[] memory sellerOptions = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptions = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptions.length, 1);
         assertEq(sellerOptions[0].id, 1);
         assertEq(sellerOptions[0].size, 5000);
@@ -474,7 +474,7 @@ contract MarketTest is Test {
     function test_cre_buyOption() external {
         Market market = _createDefaultOptionMarket();
         IMarket.Option memory optionBefore = market.getOption(_createDefaultOption(market));
-        IMarket.Option[] memory buyerOptionsBefore = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsBefore = market.getUserOptions(buyer.addr, false);
 
         deal(address(USDC), buyer.addr, optionBefore.premium);
         vm.prank(buyer.addr);
@@ -500,7 +500,7 @@ contract MarketTest is Test {
         assertEq(USDC.balanceOf(optionBefore.seller), optionAfter.premium);
         assertEq(market.ownerOf(optionBefore.id), optionAfter.buyer);
 
-        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsAfter = market.getUserOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 1);
     }
 
@@ -553,7 +553,7 @@ contract MarketTest is Test {
         assertEq(optionBefore.isPendingFill, true);
         assertEq(market.optionsCount(), 1);
 
-        IMarket.Option[] memory sellerOptionsBefore = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptionsBefore = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptionsBefore.length, 1);
 
         bytes memory execData = abi.encode(optionBefore.id, signature);
@@ -566,9 +566,9 @@ contract MarketTest is Test {
         assertEq(optionAfter.buyer, address(0));
         assertEq(optionAfter.isPendingFill, false);
 
-        IMarket.Option[] memory sellerOptionsAfter = market.getOptions(seller.addr, true);
+        IMarket.Option[] memory sellerOptionsAfter = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptionsAfter.length, 0);
-        IMarket.Option[] memory buyerOptionsAfter = market.getOptions(buyer.addr, false);
+        IMarket.Option[] memory buyerOptionsAfter = market.getUserOptions(buyer.addr, false);
         assertEq(buyerOptionsAfter.length, 0);
         assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
         assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
