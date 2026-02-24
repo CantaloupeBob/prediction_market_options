@@ -112,9 +112,9 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
         return option.id;
     }
 
-    function cancelOption(uint256 optionId, bytes memory signature) external {
+    function cancelOption(uint256 optionId, address sellerOwner, bytes memory signature) external {
         Option storage option = options[optionId];
-        _verifySignature(option, option.seller, signature);
+        _verifySignature(option, sellerOwner, signature);
 
         ERC1155(CTF_CONTRACT).safeTransferFrom(address(this), option.seller, option.optionTokenId, option.size, hex"");
 

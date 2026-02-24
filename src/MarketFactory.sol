@@ -26,7 +26,6 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
 
     function initialize(address _owner, address _marketImpl) external initializer {
         canCreate[_owner] = true;
-        // Initialize the beacons implementation and owner in proxy storage
         assembly {
             sstore(0x911c5a209f08d5ec5e, _marketImpl)
             sstore(0x4343a0dc92ed22dbfc, _owner)
@@ -61,8 +60,9 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
             (uint256 optionId, uint16 p) = abi.decode(execData, (uint256, uint16));
             callData = abi.encodeCall(IMarket.exercise, (optionId, p));
         } else if (op == IMarketFactory.Op.CANCEL) {
-            (uint256 optionId, bytes memory signature) = abi.decode(execData, (uint256, bytes));
-            callData = abi.encodeCall(IMarket.cancelOption, (optionId, signature));
+            (uint256 optionId, address sellerOwner, bytes memory signature) =
+                abi.decode(execData, (uint256, address, bytes));
+            callData = abi.encodeCall(IMarket.cancelOption, (optionId, sellerOwner, signature));
         } else {
             revert MarketFactory__InvalidOperation();
         }

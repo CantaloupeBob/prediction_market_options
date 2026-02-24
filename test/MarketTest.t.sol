@@ -283,7 +283,7 @@ contract MarketTest is Test {
         assertEq(sellerOptionsBefore.length, 1);
 
         vm.prank(executor.addr);
-        market.cancelOption(optionBefore.id, signature);
+        market.cancelOption(optionBefore.id, seller.addr, signature);
 
         IMarket.Option memory optionAfter = market.getOption(optionBefore.id);
         assertEq(optionAfter.id, 0);
@@ -556,7 +556,7 @@ contract MarketTest is Test {
         IMarket.Option[] memory sellerOptionsBefore = market.getUserOptions(seller.addr, true);
         assertEq(sellerOptionsBefore.length, 1);
 
-        bytes memory execData = abi.encode(optionBefore.id, signature);
+        bytes memory execData = abi.encode(optionBefore.id, seller.addr, signature);
         _callViaCrePath(address(market), IMarketFactory.Op.CANCEL, execData);
 
         IMarket.Option memory optionAfter = market.getOption(optionBefore.id);
@@ -573,6 +573,14 @@ contract MarketTest is Test {
         assertEq(CONDITIONAL_TOKENS.balanceOf(seller.addr, Y_OUTCOME), 5000);
         assertEq(CONDITIONAL_TOKENS.balanceOf(address(market), Y_OUTCOME), 0);
         assertEq(market.optionsCount(), 1);
+    }
+
+    function test_setNewForwarder() external {
+        address newForwarder = makeAddr("NewForwarder");
+        assertEq(factory.getForwarderAddress(), address(0));
+        vm.prank(admin.addr);
+        factory.setForwarderAddress(newForwarder);
+        assertEq(factory.getForwarderAddress(), newForwarder);
     }
 
     function _createDefaultOptionMarket() private returns (Market market_) {

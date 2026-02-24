@@ -50,6 +50,15 @@ contract MarketScript is Script {
         console.log("New Market Impl", FACTORY.implementation());
     }
 
+    function setNewForwarder() external {
+        console.log("Old Forwarder", FACTORY.getForwarderAddress());
+
+        vm.broadcast();
+        FACTORY.setForwarderAddress(POLYGON_CRE_FORWARDER_SIM);
+
+        console.log("New Forwarder", FACTORY.getForwarderAddress());
+    }
+
     function createMarket() external {
         IMarket.MarketConfig memory marketConfig = IMarket.MarketConfig({
             marketName: SLUG,
