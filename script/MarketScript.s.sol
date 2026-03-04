@@ -39,6 +39,20 @@ contract MarketScript is Script {
         vm.stopBroadcast();
     }
 
+    function upgradeToNewFactoryImpl() external {
+        address deployer = 0x42A7b811d096Cba5b3bbf346361106bDe275C8d7;
+        address factoryProxy = address(FACTORY);
+        address currentImpl = FACTORY.implementation();
+        console.log("Current Factory Impl:", currentImpl);
+
+        vm.startBroadcast();
+        MarketFactory newImpl = new MarketFactory(POLYGON_CRE_FORWARDER_PROD, deployer, FACTORY.implementation());
+        PROXY_FACTORY.upgrade(factoryProxy, address(newImpl));
+        vm.stopBroadcast();
+
+        console.log("New Factory Impl:", address(newImpl));
+    }
+
     function upgradeToNewMarketImpl() external {
         console.log("Old Market Impl", FACTORY.implementation());
 
@@ -75,6 +89,23 @@ contract MarketScript is Script {
         FACTORY.createMarket(marketConfig);
     }
 
+    function viewOption() external view {
+        Market market = Market(0xfB4A10D61db3e77fb16CE34A973F7C473aC8b5fe);
+        IMarket.Option memory o = market.getOption(5);
+        console.log("Id", o.id);
+        console.log("Size", o.size);
+        console.log("OptionTokenId", o.optionTokenId);
+        console.log("Strike", o.strike);
+        console.log("Premium", o.premium);
+        console.log("PremiumToken", o.premiumToken);
+        console.log("Seller", o.seller);
+        console.log("Buyer", o.buyer);
+        console.log("Expiry", o.expiry);
+        console.log("IsCall", o.isCall);
+        console.log("IsPendingFill", o.isPendingFill);
+        console.log("IsSettled", o.isSettled);
+    }
+
     function setCreator() external {
         address creator = 0xddB2303e730eeFb9ADC7727Bd256Eb7F722cE07b;
         vm.broadcast();
@@ -92,5 +123,14 @@ contract MarketScript is Script {
 
     function viewMarkets() external view {
         console.log(FACTORY.markets(0));
+    }
+
+    function viewForwarder() external view {
+        console.log("Forwarder", FACTORY.getForwarderAddress());
+    }
+
+    function viewDomainSeparator() external view {
+        bytes32 domain = Market(0xfB4A10D61db3e77fb16CE34A973F7C473aC8b5fe).getDomainSeparator();
+        console.logBytes32(domain);
     }
 }

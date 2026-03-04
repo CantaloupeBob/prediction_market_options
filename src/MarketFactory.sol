@@ -67,8 +67,13 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
             revert MarketFactory__InvalidOperation();
         }
 
-        (bool success,) = market.call(callData);
-        require(success, MarketFactory__CallFailed());
+        (bool success, bytes memory returnData) = market.call(callData);
+        /// @dev Bubble up the revert
+        if (!success) {
+            assembly {
+                revert(add(returnData, 0x20), mload(returnData))
+            }
+        }
     }
 
     function setCreator(address creator, bool isEnabled) external onlyOwner {
