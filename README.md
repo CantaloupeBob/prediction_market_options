@@ -1,66 +1,44 @@
-## Foundry
+# Prediction Market Options Protocol with CRE Settlement Support
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+An on-chain options protocol built on top of prediction markets. It lets users write, buy, and settle **call and put options** on prediction market outcome tokens (e.g. from Polymarket).
 
-Foundry consists of:
+---
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## How It Works
 
-## Documentation
+### 1. A Market Is Created
 
-https://book.getfoundry.sh/
+An admin creates an **Option Market** tied to a specific prediction market question (e.g. _"Will X happen before 2027?"_). The market is configured with:
 
-## Usage
+- The **Yes** and **No** outcome token IDs from the underlying prediction market
+- An **expiry date** (options can't outlast the underlying market)
+- **Strike price bounds** that constrain valid option strikes, derived from the prediction market's orderbook
 
-### Build
+### 2. A Seller Writes an Option
 
-```shell
-$ forge build
-```
+A seller who holds prediction market outcome tokens can **write** an option. They sign a message specifying the terms:
 
-### Test
+- **Size** — how many outcome tokens are being put up
+- **Strike** — the price threshold that determines who wins
+- **Premium** — the price a buyer must pay to purchase the option
+- **Expiry** — when the option expires
+- **Call or Put** — whether it's a call option or a put option
 
-```shell
-$ forge test
-```
+When the option is written, the seller's outcome tokens are transferred into the market contract as collateral. The option is now listed and waiting for a buyer.
 
-### Format
+### 3. A Buyer Purchases the Option
 
-```shell
-$ forge fmt
-```
+A buyer who wants the option signs a message and pays the **premium** (in a stablecoin like USDC) directly to the seller. In return, they receive an NFT representing ownership of the option contract.
 
-### Gas Snapshots
+### 4. The Option Is Settled
 
-```shell
-$ forge snapshot
-```
+Once the outcome of the underlying prediction market is known, a designated **settler** calls the exercise function with the resolved price. The protocol then determines the winner:
 
-### Anvil
+- **Call option** — the buyer wins if the final price is **at or above** the strike
+- **Put option** — the buyer wins if the final price is **below** the strike
 
-```shell
-$ anvil
-```
+The collateral (outcome tokens) is transferred to the winning party.
 
-### Deploy
+### 5. Cancellation
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+If an option hasn't been bought yet, the seller can **cancel** it and reclaim their collateral.
