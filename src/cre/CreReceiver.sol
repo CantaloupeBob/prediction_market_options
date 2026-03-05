@@ -36,12 +36,18 @@ abstract contract CreReceiver is IReceiver, UpgradeableBeacon {
     event ExpectedWorkflowIdUpdated(bytes32 indexed previousId, bytes32 indexed newId);
     event SecurityWarning(string message);
 
-    /// @notice Constructor sets msg.sender as the owner and configures the forwarder address
+    /// @notice Constructor is a no-op since this contract is used behind a proxy.
+    /// @dev The UpgradeableBeacon constructor is overridden to skip initialization.
+    ///      All meaningful state is set via _initializeCreReceiver().
+    constructor() UpgradeableBeacon(address(0), address(0)) {}
+
+    /// @dev Override to prevent UpgradeableBeacon's constructor from setting
+    ///      owner/implementation on the implementation contract's storage (useless behind a proxy).
+    function _constructUpgradeableBeacon(address, address) internal override {}
+
+    /// @notice Initializes the CRE receiver state. Must be called from the proxy's initializer.
     /// @param _forwarderAddress The address of the Chainlink Forwarder contract (cannot be address(0))
-    /// @dev The forwarder address is required for security - it ensures only verified reports are processed
-    constructor(address _forwarderAddress, address _owner, address _implementation)
-        UpgradeableBeacon(_owner, _implementation)
-    {
+    function _initializeCreReceiver(address _forwarderAddress) internal {
         if (_forwarderAddress == address(0)) {
             revert InvalidForwarderAddress();
         }

@@ -18,21 +18,17 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
     address[] public markets;
     mapping(address => bool) public canCreate;
 
-    constructor(address _creForwarder, address _owner, address _marketImpl)
-        CreReceiver(_creForwarder, _owner, _marketImpl)
-    {
+    constructor() {
         _disableInitializers();
     }
 
-    function initialize(address _owner, address _marketImpl) external initializer {
+    function initialize(address _owner, address _marketImpl, address _creForwarder) external initializer {
         canCreate[_owner] = true;
-        assembly {
-            sstore(0x911c5a209f08d5ec5e, _marketImpl)
-            sstore(0x4343a0dc92ed22dbfc, _owner)
-        }
+        _initializeUpgradeableBeacon(_owner, _marketImpl);
+        _initializeCreReceiver(_creForwarder);
     }
 
-    function createMarket(IMarket.MarketConfig calldata config) external onlyCreator(msg.sender) returns (address) {
+    function createMarket(IMarket.MarketConfig calldata config) external onlyCreator returns (address) {
         address market = LibClone.deployERC1967BeaconProxy(address(this));
         Market(market).initialize(config);
         markets.push(market);
@@ -84,8 +80,8 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
         return markets;
     }
 
-    modifier onlyCreator(address creator) {
-        require(canCreate[creator], MarketFactory__Unauthorized());
+    modifier onlyCreator() {
+        require(canCreate[msg.sender], MarketFactory__Unauthorized());
         _;
     }
 }

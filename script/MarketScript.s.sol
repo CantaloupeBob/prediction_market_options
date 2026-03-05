@@ -27,9 +27,9 @@ contract MarketScript is Script {
         vm.startBroadcast();
         address deployer = 0x42A7b811d096Cba5b3bbf346361106bDe275C8d7;
         Market marketImpl = new Market();
-        MarketFactory factoryImpl = new MarketFactory(POLYGON_CRE_FORWARDER_PROD, deployer, address(marketImpl));
+        MarketFactory factoryImpl = new MarketFactory();
         address factoryProxy = PROXY_FACTORY.deploy(address(factoryImpl), deployer);
-        MarketFactory(factoryProxy).initialize(deployer, address(marketImpl));
+        MarketFactory(factoryProxy).initialize(deployer, address(marketImpl), POLYGON_CRE_FORWARDER_PROD);
 
         console.log("Market Implementation:", address(marketImpl));
         console.log("Factory Implementation:", address(factoryImpl));
@@ -40,13 +40,12 @@ contract MarketScript is Script {
     }
 
     function upgradeToNewFactoryImpl() external {
-        address deployer = 0x42A7b811d096Cba5b3bbf346361106bDe275C8d7;
         address factoryProxy = address(FACTORY);
         address currentImpl = FACTORY.implementation();
         console.log("Current Factory Impl:", currentImpl);
 
         vm.startBroadcast();
-        MarketFactory newImpl = new MarketFactory(POLYGON_CRE_FORWARDER_PROD, deployer, FACTORY.implementation());
+        MarketFactory newImpl = new MarketFactory();
         PROXY_FACTORY.upgrade(factoryProxy, address(newImpl));
         vm.stopBroadcast();
 

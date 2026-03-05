@@ -59,10 +59,10 @@ contract MarketTest is Test {
         }
 
         marketImpl = new Market();
-        factoryImpl = new MarketFactory(POLYGON_CRE_FORWORDER_CONTRACT, admin.addr, address(marketImpl));
+        factoryImpl = new MarketFactory();
         address factoryProxy = proxyFactory.deploy(address(factoryImpl), admin.addr);
         factory = MarketFactory(factoryProxy);
-        factory.initialize(admin.addr, address(marketImpl));
+        factory.initialize(admin.addr, address(marketImpl), POLYGON_CRE_FORWORDER_CONTRACT);
         _configureCREPerms();
     }
 
@@ -388,8 +388,7 @@ contract MarketTest is Test {
         assertEq(factory.implementation(), address(marketImpl));
         assertEq(proxyFactory.adminOf(address(factory)), admin.addr, "Admin should be set correctly");
 
-        MarketFactory newFactoryImpl =
-            new MarketFactory(POLYGON_CRE_FORWORDER_CONTRACT, admin.addr, address(marketImpl));
+        MarketFactory newFactoryImpl = new MarketFactory();
 
         vm.expectEmit(true, true, false, false);
         emit ERC1967Factory.Upgraded(address(factory), address(newFactoryImpl));
@@ -577,7 +576,7 @@ contract MarketTest is Test {
 
     function test_setNewForwarder() external {
         address newForwarder = makeAddr("NewForwarder");
-        assertEq(factory.getForwarderAddress(), address(0));
+        assertEq(factory.getForwarderAddress(), POLYGON_CRE_FORWORDER_CONTRACT);
         vm.prank(admin.addr);
         factory.setForwarderAddress(newForwarder);
         assertEq(factory.getForwarderAddress(), newForwarder);
