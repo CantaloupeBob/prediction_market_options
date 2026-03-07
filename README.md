@@ -4,6 +4,10 @@ An on-chain options protocol built on top of prediction markets. It lets users w
 
 ---
 
+### Key Source Files for CRE (links)
+
+- [`CreReceiver.sol`](https://github.com/CantaloupeBob/prediction_market_options/blob/main/src/cre/CreReceiver.sol) — CreReciever contract. Any inheriting contract becomes a consumer that can handle CRE reports.
+
 ## How It Works
 
 ### 1. A Market Is Created

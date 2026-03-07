@@ -2,6 +2,10 @@
 
 This directory contains the **CRE (Chainlink Runtime Environment)** integration layer that allows the protocol's core operations to be triggered by automated Chainlink workflows instead of direct onchain calls.
 
+### Key Source Files (links)
+
+- [`CreReceiver.sol`](https://github.com/CantaloupeBob/prediction_market_options/blob/main/src/cre/CreReceiver.sol) — CreReciever contract. Any inheriting contract becomes a consumer that can handle CRE reports.
+
 ---
 
 ## How It Fits Into the Protocol
