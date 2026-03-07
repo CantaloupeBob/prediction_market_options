@@ -23,9 +23,9 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
     }
 
     function initialize(address _owner, address _marketImpl, address _creForwarder) external initializer {
-        canCreate[_owner] = true;
         _initializeUpgradeableBeacon(_owner, _marketImpl);
         _initializeCreReceiver(_creForwarder);
+        canCreate[_owner] = true;
     }
 
     function createMarket(IMarket.MarketConfig calldata config) external onlyCreator returns (address) {
@@ -37,12 +37,13 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
     }
 
     function _processReport(bytes calldata data) internal override {
-        _executeOperation(data);
-    }
-
-    function _executeOperation(bytes calldata data) private {
         (address market, IMarketFactory.Op op, bytes memory execData) =
             abi.decode(data, (address, IMarketFactory.Op, bytes));
+
+        _executeOperation(market, op, execData);
+    }
+
+    function _executeOperation(address market, IMarketFactory.Op op, bytes memory execData) private {
         bytes memory callData;
 
         if (op == IMarketFactory.Op.WRITE) {
@@ -63,11 +64,11 @@ contract MarketFactory is IMarketFactory, CreReceiver, Initializable {
             revert MarketFactory__InvalidOperation();
         }
 
-        (bool success, bytes memory returnData) = market.call(callData);
+        (bool success, bytes memory ret) = market.call(callData);
         /// @dev Bubble up the revert
         if (!success) {
             assembly {
-                revert(add(returnData, 0x20), mload(returnData))
+                revert(add(ret, 0x20), mload(ret))
             }
         }
     }

@@ -35,6 +35,7 @@ contract Market is IMarket, ERC721, EIP712, Initializable {
     event OptionExercise(MarketConfig indexed marketConfig, Option indexed option);
     event OptionCanceled(MarketConfig indexed marketConfig, Option indexed option);
 
+    // TODO/CRIT - Add nonce and deadline to prevent sig replays
     bytes32 public constant OPTION_TYPEHASH = keccak256(
         "Option(address market,uint256 id,uint256 size,uint256 optionTokenId,uint16 strike,uint256 premium,address premiumToken,address seller,address buyer,uint32 expiry,bool isCall)"
     );
