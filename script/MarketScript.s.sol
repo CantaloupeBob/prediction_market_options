@@ -89,8 +89,8 @@ contract MarketScript is Script {
     }
 
     function viewOption() external view {
-        Market market = Market(0xfB4A10D61db3e77fb16CE34A973F7C473aC8b5fe);
-        IMarket.Option memory o = market.getOption(5);
+        Market market = Market(0xd0ff9F8aF65D88576b7f07A16fd839e75d1d9b14);
+        IMarket.Option memory o = market.getOption(59);
         console.log("Id", o.id);
         console.log("Size", o.size);
         console.log("OptionTokenId", o.optionTokenId);
